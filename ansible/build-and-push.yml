@@ -1,0 +1,100 @@
+---
+- name: Build and Push Docker Image
+  hosts: local
+  gather_facts: yes
+  vars:
+    docker_username: suyash0405
+    docker_image_name: weather_frontend
+    docker_tag: latest
+    dockerfile_path: "../Dockerfile"
+    build_context: "../"
+
+  tasks:
+    - name: Check if Docker is installed
+      command: docker --version
+      register: docker_check
+      changed_when: false
+      failed_when: false
+
+    - name: Fail if Docker is not installed
+      fail:
+        msg: "Docker is not installed. Please install Docker first."
+      when: docker_check.rc != 0
+
+    - name: Check if Docker daemon is running
+      command: docker info
+      register: docker_daemon
+      changed_when: false
+      failed_when: false
+
+    - name: Fail if Docker daemon is not running
+      fail:
+        msg: "Docker daemon is not running. Please start Docker."
+      when: docker_daemon.rc != 0
+
+    - name: Build Docker image
+      community.docker.docker_image:
+        name: "{{ docker_username }}/{{ docker_image_name }}"
+        tag: "{{ docker_tag }}"
+        build:
+          path: "{{ build_context }}"
+          dockerfile: "{{ dockerfile_path }}"
+        source: build
+        state: present
+        force_source: yes
+      register: build_result
+
+    - name: Display build result
+      debug:
+        msg: "Docker image built successfully: {{ docker_username }}/{{ docker_image_name }}:{{ docker_tag }}"
+      when: build_result.changed
+
+    - name: Tag image with commit SHA (optional)
+      set_fact:
+        git_sha: "{{ lookup('pipe', 'git rev-parse --short HEAD') }}"
+      when: build_result.changed
+      ignore_errors: yes
+
+    - name: Tag Docker image with git SHA
+      community.docker.docker_image:
+        name: "{{ docker_username }}/{{ docker_image_name }}"
+        repository: "{{ docker_username }}/{{ docker_image_name }}:{{ git_sha }}"
+        source: local
+      when: git_sha is defined and git_sha != ''
+      ignore_errors: yes
+
+    - name: Prompt for Docker Hub credentials
+      pause:
+        prompt: "Enter Docker Hub password/token (or press Ctrl+C to skip push)"
+      register: docker_password_input
+      when: build_result.changed
+
+    - name: Login to Docker Hub
+      community.docker.docker_login:
+        username: "{{ docker_username }}"
+        password: "{{ docker_password_input.user_input }}"
+      when: docker_password_input.user_input is defined and docker_password_input.user_input != ''
+      no_log: true
+
+    - name: Push Docker image to Docker Hub
+      community.docker.docker_image_push:
+        name: "{{ docker_username }}/{{ docker_image_name }}"
+        tag: "{{ docker_tag }}"
+      when: docker_password_input.user_input is defined and docker_password_input.user_input != ''
+      register: push_result
+
+    - name: Push Docker image with git SHA tag
+      community.docker.docker_image_push:
+        name: "{{ docker_username }}/{{ docker_image_name }}"
+        tag: "{{ git_sha }}"
+      when: 
+        - git_sha is defined 
+        - git_sha != ''
+        - docker_password_input.user_input is defined 
+        - docker_password_input.user_input != ''
+      ignore_errors: yes
+
+    - name: Display push result
+      debug:
+        msg: "Docker image pushed successfully to Docker Hub"
+      when: push_result is defined and push_result.changed

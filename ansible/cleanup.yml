@@ -1,0 +1,29 @@
+---
+- name: Cleanup Weather Frontend Deployment
+  hosts: local
+  gather_facts: no
+  vars:
+    namespace: weather-app
+
+  tasks:
+    - name: Delete namespace (removes all resources)
+      kubernetes.core.k8s:
+        state: absent
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ namespace }}"
+
+    - name: Wait for namespace deletion
+      command: kubectl get namespace {{ namespace }}
+      register: ns_check
+      changed_when: false
+      failed_when: false
+      retries: 10
+      delay: 3
+      until: ns_check.rc != 0
+
+    - name: Display cleanup result
+      debug:
+        msg: "Namespace {{ namespace }} and all resources have been deleted"

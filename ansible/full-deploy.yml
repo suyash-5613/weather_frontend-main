@@ -1,0 +1,18 @@
+---
+- name: Complete CI/CD - Build, Push and Deploy
+  hosts: local
+  gather_facts: yes
+  vars:
+    docker_username: suyash0405
+    docker_image_name: weather_frontend
+    docker_tag: latest
+    namespace: weather-app
+    app_name: weather-frontend
+    replicas: 2
+
+  tasks:
+    - name: Build and push Docker image
+      include_tasks: build-and-push.yml
+
+    - name: Deploy to Kubernetes
+      include_tasks: deploy-k8s.yml
